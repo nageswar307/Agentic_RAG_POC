@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # Enhanced Agentic RAG API service
+  enhanced-rag-api:
+    build: .
+    container_name: enhanced_agentic_rag_api
+    environment:
+      # Database configuration
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@host.docker.internal:${DB_PORT}/${DB_NAME}
+      
+      # OpenAI configuration for enhanced performance
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: gpt-4o-mini
+      OPENAI_EMBEDDING_MODEL: text-embedding-3-small
+      
+      # Enhanced RAG settings
+      CHUNK_SIZE: 1024
+      CHUNK_OVERLAP: 200
+      SIMILARITY_TOP_K: 10
+      RERANK_TOP_K: 5
+      CONTEXTUAL_COMPRESSION: "true"
+      HYBRID_SEARCH_ENABLED: "true"
+      
+      # Phoenix tracing
+      PHOENIX_HOST: host.docker.internal
+      PHOENIX_COLLECTOR_ENDPOINT: http://host.docker.internal:6006
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # OpenWebUI frontend with enhanced configuration
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: enhanced_open_webui
+    environment:
+      # Point to our enhanced RAG API
+      OPENAI_API_BASE_URL: http://enhanced-rag-api:8000/v1
+      OPENAI_API_KEY: "not-needed-for-local-api"
+      
+      # Enhanced UI settings
+      ENABLE_RAG_HYBRID_SEARCH: "true"
+      ENABLE_RAG_WEB_LOADER_SSL_VERIFICATION: "false"
+      RAG_EMBEDDING_ENGINE: "openai"
+      RAG_EMBEDDING_MODEL: "text-embedding-3-small"
+      
+      # UI customization
+      DEFAULT_USER_ROLE: "user"
+      ENABLE_COMMUNITY_SHARING: "false"
+      WEBUI_NAME: "Enhanced Agentic RAG"
+    ports:
+      - "3000:8080"
+    volumes:
+      - open-webui-data:/app/backend/data
+    depends_on:
+      - enhanced-rag-api
+    restart: unless-stopped
+
+  # Phoenix observability (optional)
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: phoenix_observability
+    ports:
+      - "6006:6006"
+    environment:
+      PHOENIX_SQL_DATABASE_URL: sqlite:///tmp/phoenix.db
+    volumes:
+      - phoenix-data:/tmp
+    restart: unless-stopped
+
+volumes:
+  open-webui-data:
+    driver: local
+  phoenix-data:
+    driver: local
+
+networks:
+  default:
+    name: enhanced-rag-network
